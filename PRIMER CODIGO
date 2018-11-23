@@ -1,0 +1,284 @@
+;*************************************************************
+; Juan gonzalez
+; UVG
+; EQU MACROS Y ESTADOS
+;*************************************************************
+
+#include "p16f887.inc"
+
+    ;probando 
+    ; version pwm 
+; CONFIG1
+; __config 0xFCD4
+ __CONFIG _CONFIG1, _FOSC_INTRC_NOCLKOUT & _WDTE_OFF & _PWRTE_OFF & _MCLRE_OFF & _CP_OFF & _CPD_OFF & _BOREN_OFF & _IESO_OFF & _FCMEN_OFF & _LVP_OFF
+; CONFIG2
+; __config 0xFFFF
+ __CONFIG _CONFIG2, _BOR4V_BOR40V & _WRT_OFF
+ 
+GPR_VAR	    UDATA
+DIS         RES 1
+DIS2        RES 1
+DELAY1	    RES	1
+W_TEMP	    RES	1
+STATUS_TEMP RES	1
+CONTA2      RES 1
+CONTA1      RES 1
+M           RES 1
+N           RES 1
+O           RES 1
+
+RES_VECT    CODE    0x0000		; processor reset vector
+    GOTO    START			; go to beginning of program
+
+ISR_VECT    CODE    0x0004
+PUSH:
+    MOVWF   W_TEMP
+    SWAPF   STATUS, W
+    MOVWF   STATUS_TEMP
+ISR:
+    
+POP:
+    SWAPF   STATUS_TEMP, W
+    MOVWF   STATUS
+    SWAPF   W_TEMP, F
+    SWAPF   W_TEMP, W
+    RETFIE
+TABLA_7SEG
+        ADDWF   PCL,F
+	RETLW   B'00111111'   ;0
+	RETLW   B'00000110'   ;1
+	RETLW   B'01011011'   ;2
+	RETLW   B'01001111'   ;3
+	RETLW   B'01100110'   ;4
+	RETLW   B'01101101'   ;5
+	RETLW   B'01111101'   ;6
+	RETLW   B'00000111'   ;7
+	RETLW   B'01111111'   ;8
+	RETLW   B'01101111'   ;9
+	RETLW   B'01110111'   ;A
+	RETLW   B'01111100'   ;B
+	RETLW   B'00111001'   ;C
+	RETLW   B'01011110'   ;D
+	RETLW   B'01111001'   ;E
+	RETLW   B'01110001'   ;F
+	
+	RETURN    
+; TODO ADD INTERRUPTS HERE IF USED
+;-------------------------------PRINCIPAL---------------------------------------
+MAIN_PROG CODE                      ; let linker place main program
+
+START
+CONFIG_OSCILATOR:
+    BANKSEL TRISA
+    BCF OSCCON, IRCF2
+    BSF OSCCON, IRCF1
+    BSF OSCCON, IRCF0		    ; FRECUECNIA DE 500kHz
+   
+CCONFIG_IO:
+    BANKSEL TRISA
+    CLRF    TRISA
+    BSF	    TRISA, RA0	; RA0 COMO ENTRADA
+    BSF     TRISA, RA1
+    BSF     TRISA, RA2
+    
+    CLRF    TRISB
+    CLRF    TRISC
+    CLRF    TRISD
+    CLRF    TRISE
+    BANKSEL ANSEL
+    CLRF    ANSEL
+    CLRF    ANSELH
+    BSF	    ANSEL, 0	; ANS0 COMO ENTRADA ANALÓGICA
+    BSF     ANSEL, 1
+    BSF	    ANSEL, 2	; ANS0 COMO ENTRADA ANALÓGICA
+    BANKSEL PORTA
+    CLRF    PORTA
+    CLRF    PORTB
+    CLRF    PORTC
+    CLRF    PORTD
+    
+    
+  
+CONFIG_ADC:
+    BANKSEL PORTA
+    BCF ADCON0, ADCS1
+    BSF ADCON0, ADCS0		; FOSC/8 RELOJ TAD
+    
+   	
+    BANKSEL TRISA
+    BCF ADCON1, ADFM		; JUSTIFICACIÓN A LA IZQUIERDA
+    BCF ADCON1, VCFG1		; VSS COMO REFERENCIA VREF-
+    BCF ADCON1, VCFG0		; VDD COMO REFERENCIA VREF+
+    BANKSEL PORTA
+    BSF ADCON0, ADON		; ENCIENDO EL MÓDULO ADC
+CONFIG_TX_RX:
+    BANKSEL TXSTA
+    BCF	    TXSTA, SYNC		    ; ASINCRÓNO
+    BSF	    TXSTA, BRGH		    ; LOW SPEED
+    BANKSEL BAUDCTL
+    BSF	    BAUDCTL, BRG16	    ; 8 BITS BAURD RATE GENERATOR
+    BANKSEL SPBRG
+    MOVLW   .25	    
+    MOVWF   SPBRG		    ; CARGAMOS EL VALOR DE BAUDRATE CALCULADO
+    CLRF    SPBRGH
+    BANKSEL RCSTA
+    BSF	    RCSTA, SPEN		    ; HABILITAR SERIAL PORT
+    BCF	    RCSTA, RX9		    ; SOLO MANEJAREMOS 8BITS DE DATOS
+    BSF	    RCSTA, CREN		    ; HABILITAMOS LA RECEPCIÓN 
+    BANKSEL TXSTA
+    BSF	    TXSTA, TXEN		    ; HABILITO LA TRANSMISION
+    
+    BANKSEL PORTD
+    CLRF    PORTD
+CONFIG_PWM:
+    BANKSEL TRISC
+    BSF	    TRISC, RC1
+    BSF     TRISC, RC2; ESTABLEZCO RC1 / CCP2 COMO ENTRADA
+    MOVLW   .155
+    MOVWF   PR2			    ; COLOCO EL VALOR DEL PERIODO DE MI SEÑAL 20mS
+    
+    BANKSEL PORTA
+    BSF	    CCP2CON, CCP2M3
+    BSF	    CCP2CON, CCP2M2
+    BSF	    CCP2CON, CCP2M1
+    BSF	    CCP2CON, CCP2M0		    ; MODO PWM
+    BSF	    CCP1CON, CCP1M3  ;PWM ACTIVE LOW 
+    BSF	    CCP1CON, CCP1M2
+    BCF	    CCP1CON, CCP1M1
+    BSF	    CCP1CON, CCP1M0
+   
+    MOVLW   B'00011010'
+    MOVWF   CCPR2L		    ; MSB   DEL DUTY CICLE
+    BSF	    CCP2CON, DC2B0
+    BSF	    CCP2CON, DC2B1	    ; LSB del duty cicle
+    MOVLW   B'00011010'
+    MOVWF   CCPR1L		    ; MSB   DEL DUTY CICLE
+    BSF	    CCP1CON, DC1B0
+    BSF	    CCP1CON, DC1B1	    ; LSB del duty cicle
+    BCF     CCP1CON, P1M0
+    BCF     CCP1CON, P1M1
+    BCF	    PIR1, TMR2IF
+    
+    BSF	    T2CON, T2CKPS1
+    BSF	    T2CON, T2CKPS0	    ; PRESCALER 1:16
+    
+    BSF	    T2CON, TMR2ON	    ; HABILITAMOS EL TMR2
+    BTFSS   PIR1, TMR2IF
+    GOTO    $-1
+    BCF	    PIR1, TMR2IF
+    
+    BANKSEL TRISC
+    BCF	    TRISC, RC1		    ; RC1 / CCP2 SALIDA PWM
+    BCF     TRISC, RC2
+   
+    
+LOOP
+    BANKSEL PORTA
+    BCF ADCON0, CHS3
+    BCF ADCON0, CHS2
+    BCF ADCON0, CHS1
+    BCF ADCON0, CHS0		;LECTURA DE AN0
+	
+    BSF ADCON0, GO
+    
+   
+CHECKADC:
+    BTFSC   ADCON0, GO
+    GOTO    CHECKADC
+    BTFSS   PIR1, TXIF
+    GOTO    $-1
+    MOVF    ADRESH, W 
+    MOVWF   TXREG
+ 
+    
+    MOVF    ADRESH, W
+    RRF	    ADRESH, F
+    RRF	    ADRESH, W
+    ANDLW   B'00111111'
+    MOVWF   CCPR1L
+    BCF ADCON0, CHS3
+    BCF ADCON0, CHS2
+    BCF ADCON0, CHS1
+    BSF ADCON0, CHS0
+    BSF ADCON0, GO
+CHECKADC2: 
+    BTFSC   ADCON0, GO
+    GOTO    CHECKADC2
+    BTFSS   PIR1, TXIF
+    GOTO    $-1
+    MOVF    ADRESH, W 
+    MOVWF   TXREG
+ 
+    MOVF    ADRESH, W
+    RRF	    ADRESH, F 
+    RRF	    ADRESH, W 
+    ANDLW   B'00111111'
+    MOVWF   CCPR2L 
+    BCF ADCON0, CHS3
+    BCF ADCON0, CHS2
+    BSF ADCON0, CHS1
+    BCF ADCON0, CHS0
+    BSF ADCON0, GO
+CHECKADC3: 
+    BTFSC   ADCON0, GO
+    GOTO    CHECKADC3
+    		    ; ENVÍA PORTB POR EL TX
+    
+   
+    BTFSS   PIR1, TXIF
+    GOTO    $-1
+    MOVF    ADRESH, W 
+    MOVWF   TXREG
+    BCF ADCON0, CHS3
+    BCF ADCON0, CHS2
+    BSF ADCON0, CHS1
+    BSF ADCON0, CHS0
+    BSF ADCON0, GO
+CHECKADC4
+    BTFSC   ADCON0, GO
+    GOTO    CHECKADC4
+    		    ; ENVÍA PORTB POR EL TX
+    
+   
+    BTFSS   PIR1, TXIF
+    GOTO    $-1
+    MOVF    ADRESH, W 
+    MOVWF   TXREG
+ 
+  
+ 
+    
+GOTO LOOP
+   
+
+
+;------------------------------SUBRUTINAS---------------------------------------
+ 
+DELAY_500US
+    MOVLW   .250		    ; 1US 
+    MOVWF   DELAY1	    
+    DECFSZ  DELAY1		    ;DECREMENTA CONT1
+    GOTO    $-1			    ; IR A LA POSICION DEL PC - 1
+    RETURN
+;----------------------------CONFIGURACIONES----------------------------------    
+
+DELAY2   
+    MOVLW .5
+    MOVWF CONTA2
+CONFIG1:	
+    MOVLW .10
+    MOVWF CONTA1
+RESTA2:    
+    DECFSZ CONTA1, F
+    GOTO RESTA2
+	DECFSZ CONTA2, 
+	GOTO CONFIG1
+    RETURN
+
+
+
+
+    
+
+    END
+
